@@ -51,6 +51,10 @@ fn parallel_k_way_merge<T: Copy + Ord + Send + Sync>(
     Some(())
 }
 
+pub fn merge<T: Copy + Ord + Send + Sync>(result: &mut [T], parts: Vec<&[T]>) {
+    parallel_k_way_merge(result, parts);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
