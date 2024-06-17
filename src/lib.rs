@@ -8,6 +8,8 @@ fn parallel_k_way_merge<T: Copy + Ord + Send + Sync>(
     result: &mut [T],
     mut parts: Vec<&[T]>,
 ) -> Option<()> {
+    parts.retain(|x| !x.is_empty());
+
     const CUTOFF: usize = 5000;
     let total_len = parts.iter().map(|x| x.len()).sum::<usize>();
     if total_len < CUTOFF || parts.len() == 1 {
@@ -22,16 +24,14 @@ fn parallel_k_way_merge<T: Copy + Ord + Send + Sync>(
                 .for_each(|(src, dst)| *dst = *src),
         }
     } else {
-        parts.sort_by_key(|part| part.len());
-        let position = parts.iter().position(|x| !x.is_empty())?;
-        let (_, parts) = parts.split_at_mut(position);
-        let mid_pos = parts.last()?.len() / 2;
-        let mid_val = parts.last()?[mid_pos];
+        let biggest = parts.iter().max_by_key(|x| x.len()).unwrap();
+        let mid_pos = biggest.len() / 2;
+        let pivot = biggest[mid_pos];
         let (left, right): (Vec<_>, Vec<_>) = parts
             .iter_mut()
             .map(|part| {
                 let split_pos = part
-                    .binary_search_by(|element| match element.cmp(&mid_val) {
+                    .binary_search_by(|element| match element.cmp(&pivot) {
                         Ordering::Equal => Ordering::Greater,
                         ord => ord,
                     })
@@ -41,16 +41,15 @@ fn parallel_k_way_merge<T: Copy + Ord + Send + Sync>(
             .unzip();
         let left_size = left.iter().map(|x| x.len()).sum::<usize>();
         let (left_result, right_result) = result.split_at_mut(left_size);
-        rayon::scope(|s| {
-            s.spawn(|_| {
-                parallel_k_way_merge(left_result, left);
-            });
-            parallel_k_way_merge(right_result, right);
-        });
+        rayon::join(
+            || parallel_k_way_merge(left_result, left),
+            || parallel_k_way_merge(right_result, right),
+        );
     }
     Some(())
 }
 
+#[inline]
 pub fn merge<T: Copy + Ord + Send + Sync>(result: &mut [T], parts: Vec<&[T]>) {
     parallel_k_way_merge(result, parts);
 }
